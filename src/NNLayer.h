@@ -13,15 +13,17 @@ class NNLayer {
 public:
     void assignValues(const NNLayerValues& new_values_pre) {
         assert(new_values_pre.size() == getSize()); // no bias in data, duh
-        std::copy(new_values_pre.begin(), new_values_pre.end(), values.begin());
+        std::copy(new_values_pre.begin(), new_values_pre.end(), pre_values.begin());
         applyActivationFunction();
     }
+
+    virtual const char* getName() = 0;
 
     // calculates value of the neurons, stores it inside the class
     void calculateValues(const NNLayerValues& prev_layer,
                                  const NNEdgeMatrix& edges) {
         for (size_t neuron_id = 0; neuron_id < size; ++neuron_id)
-            values[neuron_id] = std::inner_product(
+            pre_values[neuron_id] = std::inner_product(
                                     std::begin(prev_layer),
                                     std::end(prev_layer),
                                     std::begin(edges[neuron_id]),
@@ -45,7 +47,7 @@ public:
 
         NNLayerValues gradient_of_prev_layer(previous_layer.size());
 
-        for (size_t out_neuron_id  = 0; out_neuron_id < getSize(); ++out_neuron_id)
+        for (size_t out_neuron_id = 0; out_neuron_id < getSize(); ++out_neuron_id)
         for (size_t in_neuron_id = 0; in_neuron_id < previous_layer.size(); ++in_neuron_id) {
             float e_grad = previous_layer[in_neuron_id] * gradient_of_accumulation[out_neuron_id];
             edges_gradient[out_neuron_id][in_neuron_id] = e_grad;
@@ -64,28 +66,28 @@ public:
 
     // oh no public data
     // anyway
+    const size_t size;
     NNLayerValues pre_values; // without activation function, weighted inputs
     NNLayerValues values;     // with activation function
 
 protected:
     NNLayer(size_t size, bool has_bias) 
-        : pre_values(size), values(size + has_bias) {
-            if (has_bias) values.back() = 1.0f;
+        : size(size), pre_values(size), values(size + has_bias) {
+            if (has_bias) values.back() = 1;
         }
     
     virtual void applyActivationFunction() = 0;
     virtual NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues&) = 0;
 
-
-private:
-    size_t size;
 };
 
 class InputLayer : public NNLayer {
+    public:
     InputLayer(size_t size, bool has_bias = true) : NNLayer(size, has_bias) { }
     void applyActivationFunction() override {
         std::copy(pre_values.begin(), pre_values.end(), values.begin());
     }
+    const char* getName() override { return "Input layer"; }
     NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues&) override {
         throw "Wrong usage"; 
     }
@@ -97,6 +99,7 @@ public:
     void applyActivationFunction() override {
         std::transform(pre_values.begin(), pre_values.end(), values.begin(), [this](float x) { return this->f(x); });
     }
+    const char* getName() override { return "Sigmoid layer"; }
 
     NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues& in) override {
         NNLayerValues results(getSize());
@@ -113,10 +116,12 @@ private:
 
 
 class TanHLayer : public NNLayer {
+    public:
     TanHLayer(size_t size, bool has_bias = true) : NNLayer(size, has_bias) { }
     void applyActivationFunction() override {
         std::transform(pre_values.begin(), pre_values.end(), values.begin(), [this](float x) { return this->f(x); });
     }
+    const char* getName() override { return "TanH layer"; }
 
     NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues& in) override {
         NNLayerValues results(getSize());
@@ -132,10 +137,12 @@ class TanHLayer : public NNLayer {
 
 
 class LinearLayer : public NNLayer {
+    public:
     LinearLayer(size_t size, bool has_bias = true) : NNLayer(size, has_bias) { }
     void applyActivationFunction() override {
         std::copy(pre_values.begin(), pre_values.end(), values.begin());
     }
+    const char* getName() override { return "Linear layer"; }
 
     NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues& in) override {
         NNLayerValues results(getSize());
@@ -147,11 +154,13 @@ class LinearLayer : public NNLayer {
 };
 
 class RampLayer : public NNLayer {
+    public:
     RampLayer(size_t size, bool has_bias = true, float t1 = -1.0, float t2 = 1.0)
         : NNLayer(size, has_bias), t1(t1), t2(t2) { }
     void applyActivationFunction() override {
         std::transform(pre_values.begin(), pre_values.end(), values.begin(), [this](float x) { return this->f(x); });
     }
+    const char* getName() override { return "Ramp layer"; }
 
     NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues& in) override {
         NNLayerValues results(getSize());

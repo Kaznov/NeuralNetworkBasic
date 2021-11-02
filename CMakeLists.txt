@@ -38,6 +38,7 @@ list(APPEND EXT_LIBRARIES glfw)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui-file)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot)
 
 # This is required for imgui_impl_opengl3
 add_definitions(-DIMGUI_IMPL_OPENGL_LOADER_GLAD)
@@ -50,7 +51,9 @@ list(APPEND UI_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_glfw.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_opengl3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui-file/ImGuiFileBrowser.cpp
-    #${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/examples/example_glfw_opengl3/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot_demo.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot_items.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot.cpp
     )
 
 

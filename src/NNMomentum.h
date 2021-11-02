@@ -5,12 +5,12 @@
 
 class NNMomentum {
 public:
-    virtual void applyMomentum(std::vector<NNEdgeMatrix>&) = 0;    
+    virtual void applyMomentum(std::vector<NNEdgeMatrix>&) = 0;
 };
 
 class NNSteadyLearningRate : public NNMomentum {
 public:
-    NNSteadyLearningRate(float learning_rate = 0.05);
+    NNSteadyLearningRate(float learning_rate = 0.1) :learning_rate{learning_rate}{}
     void applyMomentum(std::vector<NNEdgeMatrix>& matrices) override {
         for (auto& m : matrices)
         for (auto& r : m)

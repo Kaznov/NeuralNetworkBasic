@@ -11,7 +11,7 @@
 
 class NeuralNetwork {
 public:
-    void addLayer(std::unique_ptr<NNLayer>);
+    void addLayer(std::shared_ptr<NNLayer>);
     void initializeWithRandomData();
     void evaluateNetwork(const NNLayerValues& input);
 
@@ -24,5 +24,5 @@ public:
     NNEdgeMatrix& getNthLayerEdges(size_t n);
 
     std::vector<NNEdgeMatrix> connections;
-    std::vector<NNLayer> layers;
+    std::vector<std::shared_ptr<NNLayer>> layers;
 };
