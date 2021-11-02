@@ -49,7 +49,7 @@ list(APPEND UI_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui_draw.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui_demo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_glfw.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_opengl3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_opengl2.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui-file/ImGuiFileBrowser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot_demo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot_items.cpp

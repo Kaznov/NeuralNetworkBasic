@@ -35,9 +35,11 @@ class LogLoss : public NNLossFun{
 public:
     const char* getName() override { return "Log Loss"; }
     float calculateError(NNLayerValues calculated, NNLayerValues expected) override {
-        return 0.0f;
+        
+        return 0;
     }
     NNLayerValues calculateDerivative(NNLayerValues calculated, NNLayerValues expected) override {
+
         return {};
     }
 };
