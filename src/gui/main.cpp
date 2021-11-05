@@ -9,6 +9,7 @@
 
 #include <memory>
 #include "NNTeacher.h"
+#include <future>
 
 std::unique_ptr<NNTeacher> teacher = std::make_unique<NNTeacher>();
 std::vector<std::string> set_labels;
@@ -569,6 +570,13 @@ void showNetworkConfiguration() {
     ImGui::End();
 }
 
+std::future<void> future;
+
+void learnAll()
+{
+    while (!teacher->finished()) teacher->learnEpoch();
+}
+
 void showMainWindow() {
     ImGuiWindowFlags window_flags = 0;
     window_flags |= ImGuiWindowFlags_MenuBar;
@@ -690,6 +698,8 @@ void showMainWindow() {
             }
             if (ImGui::Button("Continue training")) {
                 continue_training = true;
+                if (!future.valid())
+                    future = std::async(std::launch::async, learnAll);
             }
         }
 
