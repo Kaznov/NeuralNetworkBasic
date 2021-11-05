@@ -89,10 +89,10 @@ void showDataWindowText(std::string name, const std::vector<DataPoint>& data_set
     ImGui::End();
 }
 
-void drawInputSampleRegressionData(std::string name, bool points, 
+void drawInputSampleRegressionData(std::string name, bool points,
     std::vector<float> xs,
     std::vector<float> ys) {
-    
+
     if(points)
         ImPlot::PlotScatter(name.c_str(), xs.data(), ys.data(), xs.size());
     else
@@ -121,7 +121,7 @@ void drawVisualRegression() {
             }
             drawInputSampleRegressionData("Testing Test Cases", true, xs, ys);
         }
-        
+
         if (show_nn_result_visual) {
             auto nn = teacher->GetLastReadable();
             {
@@ -130,7 +130,7 @@ void drawVisualRegression() {
                 for (auto&& el : training_set) {
                     float x = el.input[0];
                     xs.push_back(x);
-                    
+
                     std::vector<float> input;
                     input.push_back(x);
                     nn->evaluateNetwork(input);
@@ -145,7 +145,7 @@ void drawVisualRegression() {
                 for (auto&& el : testing_set) {
                     float x = el.input[0];
                     xs.push_back(x);
-                    
+
                     std::vector<float> input;
                     input.push_back(x);
                     nn->evaluateNetwork(input);
@@ -166,7 +166,7 @@ void drawVisualClassificationData(std::string title,
     ImGui::Begin(("Classification visualization - " + title).c_str());
 
     std::vector<std::vector<DataPoint>> classes(class_count);
-    
+
     for (size_t i = 0; i < data_set.size(); ++i) {
         for (size_t j = 0; j < class_count; ++j)
             if (data_set[i].output[j] == 1) {
@@ -176,7 +176,7 @@ void drawVisualClassificationData(std::string title,
     }
     if (ImPlot::BeginPlot(("Classification Plot -" + title).c_str())) {
         ImPlot::SetupAxes("x","y");
-        
+
         for (int c = 0; c < class_count; ++c) {
             auto&& cc = classes[c];
             std::vector<float> xs;
@@ -230,7 +230,7 @@ void drawNN(std::shared_ptr<NeuralNetwork> nn) {
     ImGui::SliderFloat("Node radius", &node_radius, 10, 200, nullptr, ImGuiSliderFlags_AlwaysClamp);
     ImGui::SliderFloat("Font size", &font_size, 5, 30, nullptr, ImGuiSliderFlags_AlwaysClamp);
     ImGui::SliderFloat("Layer width", &layer_width, 50, 1000, nullptr, ImGuiSliderFlags_AlwaysClamp);
-    
+
     static ImVector<ImVec2> points;
     static ImVec2 scrolling(0.0f, 0.0f);
     static bool adding_line = false;
@@ -267,7 +267,7 @@ void drawNN(std::shared_ptr<NeuralNetwork> nn) {
     // Draw grid + all lines in the canvas
     draw_list->PushClipRect(canvas_p0, canvas_p1, true);
 
-    
+
     const ImU32 col_white = ImColor(0.9f, 1.0f, 1.0f);
     const ImU32 col_gray = ImColor(0.9f, 1.0f, 1.0f, 0.1f);
     const ImU32 col_green = ImColor(0.1f, 1.0f, 0.3f);
@@ -287,9 +287,9 @@ void drawNN(std::shared_ptr<NeuralNetwork> nn) {
     ImGui::GetFont()->FontSize = font_size;
     for (size_t l = 0; l < layers_count; ++l) {
         auto&& layer = *(nn->layers[l]);
-        int layer_size = layer.getFullSize();
+        size_t layer_size = layer.getFullSize();
 
-        
+
         float layer_y = top_offset + node_radius + origin.y;
         float step_y = canvas_sz.y - top_offset - bottom_offset - 2 * node_radius ;
         if (layer_size >= 2) step_y /= (layer_size - 1);
@@ -309,7 +309,7 @@ void drawNN(std::shared_ptr<NeuralNetwork> nn) {
                 auto n1p = last_positions[n1];
                 auto n2p = current_positions[n2];
                 draw_list->AddLine({n1p.first, n1p.second}, {n2p.first, n2p.second}, col_gray, 3.0f);
-                ImVec2 text_p = {(n1p.first * 0.6f + n2p.first * 0.4f), (n1p.second * 0.6f + n2p.second * 0.4f)}; 
+                ImVec2 text_p = {(n1p.first * 0.6f + n2p.first * 0.4f), (n1p.second * 0.6f + n2p.second * 0.4f)};
                 float weight = nn->connections[l - 1][n2][n1];
                 char text[16]{};
                 sprintf(text, "%.5f", weight);
@@ -325,7 +325,7 @@ void drawNN(std::shared_ptr<NeuralNetwork> nn) {
         last_positions = current_positions;
         current_positions.clear();
     }
-    
+
     ImGui::GetFont()->FontSize = old_font_size;
 
     draw_list->PopClipRect();
@@ -355,7 +355,7 @@ void showNNErrorPlot() {
     if (ImPlot::BeginPlot("Error plot training set")) {
         ImPlot::SetupAxes("epoch", "error");
         std::vector<float> xs;
-        
+
         for (size_t i = 0; i < teacher->error_history.size(); ++i) {
             xs.push_back(i);
         }
@@ -381,7 +381,7 @@ void showIntroWindow() {
         show_intro_window = false;
         classification = true;
     }
-    
+
     ImGui::End();
 }
 
@@ -463,7 +463,7 @@ void showNetworkConfiguration() {
                 training_set[0].input.size()));
             teacher->updateLast();
         }
-    }   
+    }
 
     ImGui::Separator();
     static int batch_size = 32;
@@ -491,13 +491,13 @@ void showNetworkConfiguration() {
             const bool is_selected = (next_layer_type == n);
             if (ImGui::Selectable(act_str[n].c_str(), is_selected))
                 next_layer_type = n;
-                    
+
             if (is_selected)
                 ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
-    
+
     auto add_layer = [&]() {
         switch (next_layer_type)
         {
@@ -509,7 +509,7 @@ void showNetworkConfiguration() {
             lrc->addLayer(std::make_unique<SigmoidLayer>(
                 next_layer_size, next_layer_bias));
             break;
-        
+
         case 1:
             nn->addLayer(std::make_unique<TanHLayer>(
                 next_layer_size, next_layer_bias));
@@ -518,7 +518,7 @@ void showNetworkConfiguration() {
             lrc->addLayer(std::make_unique<TanHLayer>(
                 next_layer_size, next_layer_bias));
             break;
-        
+
         case 2:
             nn->addLayer(std::make_unique<LinearLayer>(
                 next_layer_size, next_layer_bias));
@@ -527,7 +527,7 @@ void showNetworkConfiguration() {
             lrc->addLayer(std::make_unique<LinearLayer>(
                 next_layer_size, next_layer_bias));
             break;
-        
+
         case 3:
             nn->addLayer(std::make_unique<RampLayer>(
                 next_layer_size, next_layer_bias));
@@ -536,7 +536,7 @@ void showNetworkConfiguration() {
             lrc->addLayer(std::make_unique<RampLayer>(
                 next_layer_size, next_layer_bias));
             break;
-        
+
         default:
             break;
         }
@@ -547,7 +547,7 @@ void showNetworkConfiguration() {
         add_layer();
     }
 
-    
+
     if (ImGui::Button("Add last layer") && training_set.size() > 0) {
         next_layer_size = training_set[0].output.size();
         next_layer_bias = false;
@@ -565,7 +565,7 @@ void showNetworkConfiguration() {
         nn->initializeWithRandomData();
         teacher->updateLast();
     }
-    
+
     ImGui::End();
 }
 
@@ -587,21 +587,23 @@ void showMainWindow() {
         }
         ImGui::EndMenuBar();
     }
-    
+
     //Remember the name to ImGui::OpenPopup() and showFileDialog() must be same...
     if(open_training)
         ImGui::OpenPopup("Open File - training set");
     if(open_testing)
         ImGui::OpenPopup("Open File - testing set");
-        
-    /* Optional third parameter. Support opening only compressed rar/zip files. 
+
+    /* Optional third parameter. Support opening only compressed rar/zip files.
      * Opening any other file will show error, return false and won't close the dialog.
      */
-    if(file_dialog.showFileDialog("Open File - training set", imgui_addons::ImGuiFileBrowser::DialogMode::OPEN, ImVec2(700, 310), ".csv"))
+    if(file_dialog.showFileDialog("Open File - training set",
+            imgui_addons::ImGuiFileBrowser::DialogMode::OPEN, ImVec2(700, 310), ".csv"))
     {
         loadTrainingSet(file_dialog.selected_path);
     }
-    if(file_dialog.showFileDialog("Open File - testing set", imgui_addons::ImGuiFileBrowser::DialogMode::OPEN, ImVec2(700, 310), ".csv"))
+    if(file_dialog.showFileDialog("Open File - testing set",
+            imgui_addons::ImGuiFileBrowser::DialogMode::OPEN, ImVec2(700, 310), ".csv"))
     {
         loadTestingSet(file_dialog.selected_path);
     }
@@ -632,7 +634,10 @@ void showMainWindow() {
     }
     ImGui::Text("Layer info: ");
 
-    static ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable;
+    static ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |
+                                    ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV |
+                                    ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable |
+                                    ImGuiTableFlags_Hideable;
 
     // When using ScrollX or ScrollY we need to specify a size for our table container!
     // Otherwise by default the table will fit all available space, like a BeginChild() call.
@@ -660,16 +665,16 @@ void showMainWindow() {
             ImGui::Text("%s", l.getName());
             ImGui::TableSetColumnIndex(3);
             ImGui::Text("%s", l.hasBias() ? "true" : "false");
-            
+
         }
-        
+
         ImGui::EndTable();
     }
 
     ImGui::Text("Loss type: %s", teacher->loss_fun ? teacher->loss_fun->getName() : "?");
     ImGui::Text("Batch size: %d", teacher->batch_size);
     ImGui::Checkbox("Show NN visualization", &show_nn_visual);
-    
+
     ImGui::Separator();
 
     if (network_initialized) {
@@ -696,12 +701,12 @@ void showMainWindow() {
         if (teacher->finished()) {
             ImGui::Text("Network finished learning");
         }
-        
+
         ImGui::Checkbox("Show NN results", &show_nn_result_visual);
         ImGui::Checkbox("Show NN error plot", &show_nn_error_plot);
         ImGui::Checkbox("Show NN changes", &show_nn_changes_visual);
 
-    
+
     }
 
     ImGui::End();
@@ -791,9 +796,9 @@ int main(int, char**)
         //ImGui::ShowDemoWindow();
         //ImPlot::ShowDemoWindow();
 
-        if (show_intro_window)        
+        if (show_intro_window)
             showIntroWindow();
-        if (regression || classification)        
+        if (regression || classification)
             showMainWindow();
 
         if (show_train_data_text)
@@ -810,7 +815,7 @@ int main(int, char**)
                 if (show_test_data_visual) drawVisualClassificationTesting();
             }
             else drawVisualRegression();
-        
+
         if (show_network_configuration) {
             showNetworkConfiguration();
         }
@@ -842,7 +847,7 @@ int main(int, char**)
     // Cleanup
     ImGui_ImplOpenGL2_Shutdown();
     ImGui_ImplGlfw_Shutdown();
-    
+
     ImPlot::DestroyContext();
     ImGui::DestroyContext();
 

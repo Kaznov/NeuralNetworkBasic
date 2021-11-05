@@ -14,7 +14,7 @@
 #include "NNTerminator.h"
 
 // Contains all the training cases and verification cases.
-// Contains a scheduler, a momentum keeper and a terminator of NN. 
+// Contains a scheduler, a momentum keeper and a terminator of NN.
 class NNTeacher {
 public:
     void addNetwork(std::unique_ptr<NeuralNetwork> nn) {
@@ -51,9 +51,9 @@ public:
         if (finished()) return;
         std::vector<DataPoint> batch = std::move(batches.back());
         batches.pop_back();
-        
+
         std::vector<std::vector<NNEdgeMatrix>> gradients;
-        
+
         // backprop for all in batch
         for (auto&& dp : batch) {
             network->evaluateNetwork(dp.input);
@@ -85,12 +85,12 @@ public:
         for (size_t i = 1; i < M; ++i) {
             addMatrices(gradients[i], grad_mean);
         }
-        
+
         // reduce by size of batch (calulate mean)
         for (auto& matrix : grad_mean)
             for (auto& row : matrix)
                 for (auto& col : row)
-                   col /= M; 
+                   col /= M;
 
         // apply momentum and learning factor
         momentum->applyMomentum(grad_mean);
@@ -132,12 +132,16 @@ public:
     }
 
     void checkFinish() {
-        
+
         float total_error;
         if (error_history_epoch.size() == 0)
             total_error = INFINITY;
         else
-            total_error = std::accumulate(error_history_epoch.begin(), error_history_epoch.end(), 0.0) / error_history_epoch.size();
+            total_error =
+                static_cast<float>(
+                    std::accumulate(error_history_epoch.begin(),
+                                    error_history_epoch.end(),
+                                    0.0) / error_history_epoch.size());
 
         stopped = terminator->shouldFinish(total_error);
 
@@ -153,7 +157,7 @@ public: // whatev im out of time
     std::unique_ptr<NeuralNetwork> network;
     std::vector<DataPoint> dataset;
     std::vector<std::vector<DataPoint>> batches;
-    
+
     size_t next_to_take = 0;
     size_t batch_size = 0;
     bool stopped = false;
@@ -173,7 +177,7 @@ public: // whatev im out of time
         std::lock_guard l{m};
         return last_readable_changes;
     }
-    
+
 
     size_t getCurrentEpoch() { return (size_t)epoch.load();}
     float getCurrentError() { std::lock_guard l {m}; return error_history.empty() ? NAN : error_history.back(); }
