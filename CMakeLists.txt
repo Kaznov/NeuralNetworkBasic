@@ -40,7 +40,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui-file)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot)
 
-# This is required for imgui_impl_opengl3
+# This is required for imgui_impl_opengl2
 add_definitions(-DIMGUI_IMPL_OPENGL_LOADER_GLAD)
 list(APPEND UI_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui.cpp
