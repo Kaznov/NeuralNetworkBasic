@@ -32,7 +32,7 @@ public:
     }
 
     // given gradient of the layer, returns gradient of the previous edges
-    // and gradient of the previous layer 
+    // and gradient of the previous layer
     virtual std::pair<NNEdgeMatrix, NNLayerValues> backwardPropagation(
         const NNLayerValues& gradient_of_activation, // gradient dCost/dA(Layer)
         const NNLayerValues& previous_layer
@@ -41,7 +41,7 @@ public:
         NNLayerValues gradient_of_accumulation = // gradient of sum of edges dCost/dZ[layer] = dA[layer]/dZ[layer] * dCost / dA[layer]
                                                  // where Z is sum (w * x) (weighted input)
             calculateActivationToAccumulationGradient(gradient_of_activation);
-        
+
         NNEdgeMatrix edges_gradient(getSize());
         for (auto& v : edges_gradient) v.resize(previous_layer.size());
 
@@ -54,7 +54,7 @@ public:
             gradient_of_prev_layer[in_neuron_id] += e_grad;
         }
 
-        return {edges_gradient, gradient_of_prev_layer};            
+        return {edges_gradient, gradient_of_prev_layer};
     };
 
     size_t getSize() const { return size; }
@@ -71,11 +71,11 @@ public:
     NNLayerValues values;     // with activation function
 
 protected:
-    NNLayer(size_t size, bool has_bias) 
+    NNLayer(size_t size, bool has_bias)
         : size(size), pre_values(size), values(size + has_bias) {
             if (has_bias) values.back() = 1;
         }
-    
+
     virtual void applyActivationFunction() = 0;
     virtual NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues&) = 0;
 
@@ -89,7 +89,7 @@ class InputLayer : public NNLayer {
     }
     const char* getName() override { return "Input layer"; }
     NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues&) override {
-        throw "Wrong usage"; 
+        throw "Wrong usage";
     }
 };
 
@@ -111,7 +111,10 @@ public:
 private:
     float slope;
     float f(float x) { return 1.0f / (1.0f + expf(-slope * x)); }
-    float fp(float x) { float fx = f(x); return slope * fx * (1 - fx); }
+    float fp(float x) {
+        float fx = f(x);
+        return slope * fx * (1 - fx);
+    }
 };
 
 
@@ -175,4 +178,3 @@ class RampLayer : public NNLayer {
 
     float t1, t2;
 };
-

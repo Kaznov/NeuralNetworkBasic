@@ -7,14 +7,90 @@
 #include <stdio.h>
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
+#include <future>
 #include <memory>
+#include <map>
+
 #include "NNTeacher.h"
 
 std::unique_ptr<NNTeacher> teacher = std::make_unique<NNTeacher>();
 std::vector<std::string> set_labels;
 std::vector<DataPoint> training_set;
 std::vector<DataPoint> testing_set;
+std::future<void> global_waiter;
 
+
+#include <filesystem>
+struct DatasetId {
+    std::string name;
+    std::string train_file;
+    std::string test_file;
+};
+
+std::vector<DatasetId> regression_sets_list;
+std::vector<DatasetId> classification_sets_list;
+
+void loadDataSetsList(std::filesystem::path path, std::vector<DatasetId>& out_list) {
+    std::filesystem::directory_iterator di(path);
+    std::map<std::string, DatasetId> dataset_map;
+    for(auto const& dir_entry : di) {
+        if (!std::filesystem::is_regular_file(dir_entry)) continue;
+        if (dir_entry.path().extension() != ".csv") continue;
+
+        const auto name = dir_entry.path().stem();
+
+        auto name_decomposed = splitText(name.string(), '.');
+        bool is_training = false;
+        bool is_testing = false;
+
+        std::string name_out;
+
+        for (auto && word : name_decomposed) {
+            if (word == "train") {
+                is_training = true;
+            }
+            else if (word == "test") {
+                is_testing = true;
+            } else if (word == "data") {
+                continue;
+            } else {
+                name_out += word;
+                name_out += " ";
+            }
+        }
+        if (name_out.size() >= 0) {
+            name_out.pop_back();
+        }
+
+        if (is_training) {
+            dataset_map[name_out].train_file = dir_entry.path().string();
+            dataset_map[name_out].name = name_out;
+        }
+        if (is_testing) {
+            dataset_map[name_out].test_file = dir_entry.path().string();
+            dataset_map[name_out].name = name_out;
+        }
+    }
+
+    for (auto&& el : dataset_map)
+        out_list.push_back(std::move(el.second));
+}
+
+void preloadDataSets(std::filesystem::path cwd = std::filesystem::current_path()) {
+    while (cwd.has_relative_path() && !std::filesystem::is_directory(cwd / "data"))
+        cwd = cwd.parent_path();
+    if (!cwd.has_relative_path()) return;
+    auto path = cwd/"data";
+    if (std::filesystem::is_directory(path / "regression")) {
+        auto regression_path = path / "regression";
+        loadDataSetsList(regression_path, regression_sets_list);
+    }
+    if (std::filesystem::is_directory(path / "classification")) {
+        auto classification_path = path / "classification";
+        loadDataSetsList(classification_path, classification_sets_list);
+    }
+
+}
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -41,11 +117,11 @@ bool show_nn_error_plot = false;
 
 bool show_network_configuration = false;
 bool network_initialized = false;
-bool continue_training = false;
-
-bool show_error_plot = false;
+bool learning_on_side_thread = false;
 
 int class_count = -1;
+
+std::atomic<bool> stop_requested = false;
 
 void initializeTeacher() {
     teacher = std::make_unique<NNTeacher>();
@@ -101,17 +177,13 @@ void drawInputSampleRegressionData(std::string name, bool points,
 
 void drawVisualRegression() {
     ImGui::Begin("Regression visualization training");
+
     if (ImPlot::BeginPlot("Regression Plot")) {
-        ImPlot::SetupAxes("x","y");
-        if (show_train_data_visual) {
-            std::vector<float> xs;
-            std::vector<float> ys;
-            for (auto&& el : training_set) {
-                xs.push_back(el.input[0]);
-                ys.push_back(el.output[0]);
-            }
-            drawInputSampleRegressionData("Training Test cases", true, xs, ys);
-        }
+        ImPlotAxisFlags flags{};
+        flags |= ImPlotAxisFlags_AutoFit;
+        ImPlot::SetupAxes("x","y", flags, flags);
+
+
         if (show_test_data_visual) {
             std::vector<float> xs;
             std::vector<float> ys;
@@ -121,24 +193,21 @@ void drawVisualRegression() {
             }
             drawInputSampleRegressionData("Testing Test Cases", true, xs, ys);
         }
+        if (show_train_data_visual) {
+            std::vector<float> xs;
+            std::vector<float> ys;
+            for (auto&& el : training_set) {
+                xs.push_back(el.input[0]);
+                ys.push_back(el.output[0]);
+            }
+            drawInputSampleRegressionData("Training Test cases", true, xs, ys);
+        }
 
         if (show_nn_result_visual) {
             auto nn = teacher->GetLastReadable();
-            {
-                std::vector<float> xs;
-                std::vector<float> ys;
-                for (auto&& el : training_set) {
-                    float x = el.input[0];
-                    xs.push_back(x);
 
-                    std::vector<float> input;
-                    input.push_back(x);
-                    nn->evaluateNetwork(input);
-                    ys.push_back(nn->layers.back()->values[0]);
-                }
+            std::lock_guard l(teacher->m); // i cry
 
-                drawInputSampleRegressionData("Neural network on training set", true, xs, ys);
-            }
             if (testing_set.size() > 0) {
                 std::vector<float> xs;
                 std::vector<float> ys;
@@ -146,13 +215,34 @@ void drawVisualRegression() {
                     float x = el.input[0];
                     xs.push_back(x);
 
-                    std::vector<float> input;
-                    input.push_back(x);
-                    nn->evaluateNetwork(input);
-                    ys.push_back(nn->layers.back()->values[0]);
+                    DataPoint dp;
+                    dp.input.push_back(x);
+                    teacher->normalizeDatapoint(dp);
+                    nn->evaluateNetwork(dp.input);
+                    dp.output = nn->layers.back()->values;
+                    teacher->denormalizeDatapoint(dp);
+                    ys.push_back(dp.output[0]);
                 }
 
                 drawInputSampleRegressionData("Neural network on testing set", true, xs, ys);
+            }
+            {
+                std::vector<float> xs;
+                std::vector<float> ys;
+                for (auto&& el : training_set) {
+                    float x = el.input[0];
+                    xs.push_back(x);
+
+                    DataPoint dp;
+                    dp.input.push_back(x);
+                    teacher->normalizeDatapoint(dp);
+                    nn->evaluateNetwork(dp.input);
+                    dp.output = nn->layers.back()->values;
+                    teacher->denormalizeDatapoint(dp);
+                    ys.push_back(dp.output[0]);
+                }
+
+                drawInputSampleRegressionData("Neural network on training set", true, xs, ys);
             }
         }
 
@@ -175,7 +265,9 @@ void drawVisualClassificationData(std::string title,
             }
     }
     if (ImPlot::BeginPlot(("Classification Plot -" + title).c_str())) {
-        ImPlot::SetupAxes("x","y");
+        ImPlotAxisFlags flags;
+        flags |= ImPlotAxisFlags_AutoFit;
+        ImPlot::SetupAxes("x","y", flags, flags);
 
         for (int c = 0; c < class_count; ++c) {
             auto&& cc = classes[c];
@@ -202,14 +294,52 @@ void drawVisualClassificationTesting() {
     drawVisualClassificationData("Testing", testing_set);
 }
 
-void drawVisualClassificationNN() {
-    // TODO
-    //drawVisualClassificationData("NN", NN_last_result);
+void drawVisualClassificationTrainingNN() {
+    auto training_set_NN = training_set;
+    auto nn = teacher->GetLastReadable();
+    std::lock_guard l(teacher->m); // i cry
+
+    for (auto& dp : training_set_NN) {
+        teacher->normalizeDatapoint(dp);
+        nn->evaluateNetwork(dp.input);
+        dp.output = nn->getLastLayerAfterEvaluation().values;
+        teacher->denormalizeDatapoint(dp);
+
+        dp.output = LogLoss::applyTransform(dp.output, {});
+        auto max_it = std::max_element(dp.output.begin(), dp.output.end());
+        auto max_id = max_it - dp.output.begin();
+        auto output_size = dp.output.size();
+        dp.output.clear();
+        dp.output.resize(output_size);
+        dp.output[max_id] = 1.0;
+    }
+
+    drawVisualClassificationData("Training NN", training_set_NN);
 }
 
-void showNNResultVisual() {
+void drawVisualClassificationTestingNN() {
+    auto testing_set_NN = testing_set;
+    auto nn = teacher->GetLastReadable();
+    std::lock_guard l(teacher->m); // i cry
 
+    for (auto& dp : testing_set_NN) {
+        teacher->normalizeDatapoint(dp);
+        nn->evaluateNetwork(dp.input);
+        dp.output = nn->getLastLayerAfterEvaluation().values;
+        teacher->denormalizeDatapoint(dp);
+
+        dp.output = LogLoss::applyTransform(dp.output, {});
+        auto max_it = std::max_element(dp.output.begin(), dp.output.end());
+        auto max_id = max_it - dp.output.begin();
+        auto output_size = dp.output.size();
+        dp.output.clear();
+        dp.output.resize(output_size);
+        dp.output[max_id] = 1.0;
+    }
+
+    drawVisualClassificationData("Testing NN", testing_set_NN);
 }
+
 
 void drawNN(std::shared_ptr<NeuralNetwork> nn) {
     // Demonstrate using the low-level ImDrawList to draw custom shapes.
@@ -353,7 +483,9 @@ void showNNErrorPlot() {
     ImGui::Begin("Error plot");
     std::lock_guard l{teacher->m};
     if (ImPlot::BeginPlot("Error plot training set")) {
-        ImPlot::SetupAxes("epoch", "error");
+        ImPlotAxisFlags flags{};
+        flags |= ImPlotAxisFlags_AutoFit;
+        ImPlot::SetupAxes("epoch", "error", flags, flags);
         std::vector<float> xs;
 
         for (size_t i = 0; i < teacher->error_history.size(); ++i) {
@@ -449,26 +581,25 @@ void showNetworkConfiguration() {
     NeuralNetwork* nn = teacher->network.get();
     NeuralNetwork* lr = teacher->last_readable.get();
     NeuralNetwork* lrc = teacher->last_readable_changes.get();
-    if (ImGui::Button("Reset")) {
-        initializeTeacher();
-    }
 
-    if (ImGui::Button("Add input layer")) {
-        if (nn->layers.size() == 0 && training_set.size() > 0) {
-            nn->addLayer(std::make_unique<InputLayer>(
-                training_set[0].input.size()));
-            lr->addLayer(std::make_unique<InputLayer>(
-                training_set[0].input.size()));
-            lrc->addLayer(std::make_unique<InputLayer>(
-                training_set[0].input.size()));
-            teacher->updateLast();
-        }
+    if (nn->layers.size() == 0 && training_set.size() > 0) {
+        nn->addLayer(std::make_unique<InputLayer>(
+            training_set[0].input.size()));
+        lr->addLayer(std::make_unique<InputLayer>(
+            training_set[0].input.size()));
+        lrc->addLayer(std::make_unique<InputLayer>(
+            training_set[0].input.size()));
+        teacher->updateLast();
     }
 
     ImGui::Separator();
     static int batch_size = 32;
     ImGui::InputInt("Batch size", &batch_size);
     if (batch_size < 1) batch_size = 1;
+
+    static float learning_rate = 0.05;
+    ImGui::InputFloat("Learning rate", &learning_rate, 0.005f);
+
     ImGui::Separator();
 
     ImGui::Text("Next layer properties: ");
@@ -558,8 +689,8 @@ void showNetworkConfiguration() {
             teacher->addLossFunction(std::make_unique<MeanSquaredLossFun>());
         else
             teacher->addLossFunction(std::make_unique<LogLoss>());
-        teacher->addMomentum(std::make_unique<NNSteadyLearningRate>());
-        teacher->addTerminator(std::make_unique<NNConstantTerminator>(200));
+        teacher->addMomentum(std::make_unique<NNSteadyLearningRate>(learning_rate));
+        teacher->addTerminator(std::make_unique<NNConstantTerminator>(100000));
         network_initialized = true;
         show_network_configuration = false;
         nn->initializeWithRandomData();
@@ -569,43 +700,101 @@ void showNetworkConfiguration() {
     ImGui::End();
 }
 
+void showLoadDataWindow(bool* b) {
+
+}
+
 void showMainWindow() {
     ImGuiWindowFlags window_flags = 0;
     window_flags |= ImGuiWindowFlags_MenuBar;
     ImGui::Begin(regression ? "Regression" : "Classification", nullptr, window_flags);
-    bool open_training = false, open_testing = false;
-    if(ImGui::BeginMenuBar())
-    {
-        if (ImGui::BeginMenu("File"))
-        {
-            if (ImGui::MenuItem("Load training set", nullptr, nullptr, !training_set_loaded))
-                open_training = true;
-            if (ImGui::MenuItem("Load testing set", nullptr, nullptr, !testing_set_loaded))
-                open_testing = true;
+    /* Optional third parameter. Support opening only compressed rar/zip files.
+     * Opening any other file will show error, return false and won't close the dialog.
+     */
 
+    auto reset_nn = []() {
+        if (learning_on_side_thread) stop_requested = true;
+        teacher->m.lock();
+        teacher->m.unlock();
+        teacher.release();
+        initializeTeacher();
+        network_initialized = false;
+        show_nn_result_visual = false;
+        show_nn_changes_visual = false;
+        show_nn_error_plot = false;
+        show_nn_visual = false;
+    };
+
+    auto reset_data = [&]() {
+        reset_nn();
+        training_set_loaded = false;
+        testing_set_loaded = false;
+        show_train_data_text = false;
+        show_test_data_text = false;
+        show_train_data_visual = false;
+        show_test_data_visual = false;
+        class_count = -1;
+        training_set.clear();
+        testing_set.clear();
+    };
+
+    auto reset_all = [&]() {
+        reset_data();
+        classification = false;
+        regression = false;
+        show_intro_window = true;
+    };
+
+    if(ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("Resetting")) {
+            if (ImGui::MenuItem("Reset Neural Network")) {
+                reset_nn();
+            }
+            if (ImGui::MenuItem("Reset Data Set")) {
+                reset_data();
+            }
+            if (ImGui::MenuItem("Reset Network Type")) {
+                reset_all();
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
     }
 
-    //Remember the name to ImGui::OpenPopup() and showFileDialog() must be same...
-    if(open_training)
-        ImGui::OpenPopup("Open File - training set");
-    if(open_testing)
-        ImGui::OpenPopup("Open File - testing set");
+    if (training_set.empty()) {
+        ImGui::Text("Choose dataset:");
+        std::vector<DatasetId> datasets;
+        if(regression) {
+            datasets = regression_sets_list;
+        } else {
+            datasets = classification_sets_list;
+        }
 
-    /* Optional third parameter. Support opening only compressed rar/zip files.
-     * Opening any other file will show error, return false and won't close the dialog.
-     */
-    if(file_dialog.showFileDialog("Open File - training set",
-            imgui_addons::ImGuiFileBrowser::DialogMode::OPEN, ImVec2(700, 310), ".csv"))
-    {
-        loadTrainingSet(file_dialog.selected_path);
+        std::vector<const char*> datasets_names;
+        for (auto&& ds : datasets) datasets_names.push_back(ds.name.c_str());
+        static int dataset_chosen = -1;
+        ImGui::ListBox("", &dataset_chosen, datasets_names.data(), datasets_names.size(), 4);
+
+        if (dataset_chosen != -1) {
+            assert(!datasets[dataset_chosen].train_file.empty());
+            loadTrainingSet(datasets[dataset_chosen].train_file);
+            if (!datasets[dataset_chosen].test_file.empty())
+            loadTestingSet(datasets[dataset_chosen].test_file);
+            dataset_chosen = -1;
+        }
+
+        if (ImGui::Button("Add new folder with data")) {
+            ImGui::OpenPopup("Open File - add dataset directory");
+        }
     }
-    if(file_dialog.showFileDialog("Open File - testing set",
-            imgui_addons::ImGuiFileBrowser::DialogMode::OPEN, ImVec2(700, 310), ".csv"))
+
+    if(file_dialog.showFileDialog("Open File - add dataset directory",
+            imgui_addons::ImGuiFileBrowser::DialogMode::SELECT, ImVec2(700, 310), ""))
     {
-        loadTestingSet(file_dialog.selected_path);
+        if(regression)
+            loadDataSetsList(file_dialog.selected_path, regression_sets_list);
+        else
+            loadDataSetsList(file_dialog.selected_path, classification_sets_list);
     }
 
     if (training_set_loaded) {
@@ -685,7 +874,7 @@ void showMainWindow() {
         }
         ImGui::Text("Current epoch: %d", teacher->getCurrentEpoch());
 
-        if (!continue_training && !teacher->finished()) {
+        if (!learning_on_side_thread && !teacher->finished()) {
             if (ImGui::Button("Next batch")) {
                 if (!teacher->hasNextBatch()) teacher->generateBatches();
                 teacher->learnBatch();
@@ -693,9 +882,42 @@ void showMainWindow() {
             if (ImGui::Button("Next epoch")) {
                 teacher->learnEpoch();
             }
-            if (ImGui::Button("Continue training")) {
-                continue_training = true;
+            if (ImGui::Button("10 epochs")) {
+                learning_on_side_thread = true;
+                global_waiter = std::async(std::launch::async, []() {
+                    for (int i = 0; i < 10; ++i) {
+                        if (teacher->finished() || stop_requested.load()) break;
+                        teacher->learnEpoch();
+                    }
+                    stop_requested.store(false);
+                    learning_on_side_thread = false;
+                });
             }
+            if (ImGui::Button("100 epochs")) {
+                learning_on_side_thread = true;
+                global_waiter = std::async(std::launch::async, [](){
+                    for (int i = 0; i < 100; ++i) {
+                        if (teacher->finished() || stop_requested.load()) break;
+                        teacher->learnEpoch();
+                    }
+                    stop_requested.store(false);
+                    learning_on_side_thread = false;
+                });
+            }
+            if (ImGui::Button("Continue training")) {
+                learning_on_side_thread = true;
+                global_waiter = std::async(std::launch::async, [](){
+                    for (;;) {
+                        if (teacher->finished() || stop_requested.load()) break;
+                        teacher->learnEpoch();
+                    }
+                    stop_requested.store(false);
+                    learning_on_side_thread = false;
+                });
+            }
+        }
+        if (learning_on_side_thread && ImGui::Button("Pause learning")) {
+            stop_requested.store(true);
         }
 
         if (teacher->finished()) {
@@ -710,12 +932,12 @@ void showMainWindow() {
     }
 
     ImGui::End();
-
 }
 
 
 int main(int, char**)
 {
+    preloadDataSets();
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -793,8 +1015,8 @@ int main(int, char**)
         ImGui::NewFrame();
 
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        //ImGui::ShowDemoWindow();
-        //ImPlot::ShowDemoWindow();
+        // ImGui::ShowDemoWindow();
+        // ImPlot::ShowDemoWindow();
 
         if (show_intro_window)
             showIntroWindow();
@@ -811,8 +1033,10 @@ int main(int, char**)
 
         if (show_train_data_visual || show_test_data_visual || show_nn_result_visual)
             if (classification) {
-                if (show_train_data_visual) drawVisualClassificationTraining();
-                if (show_test_data_visual) drawVisualClassificationTesting();
+                if (show_train_data_visual && training_set.size() > 0) drawVisualClassificationTraining();
+                if (show_test_data_visual && testing_set.size() > 0) drawVisualClassificationTesting();
+                if (show_nn_result_visual && training_set.size() > 0) drawVisualClassificationTrainingNN();
+                if (show_nn_result_visual && testing_set.size() > 0) drawVisualClassificationTestingNN();
             }
             else drawVisualRegression();
 

@@ -6,7 +6,7 @@
 #include "utils.h"
 
 void NeuralNetwork::initializeWithRandomData() {
-    std::uniform_real_distribution<float> dis{};
+    std::uniform_real_distribution<float> dis{-1.0, 1.0};
     for (auto& matrix : connections)
     for (auto& neuron_out : matrix)
     for (auto& neuron_in : neuron_out)

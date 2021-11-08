@@ -28,7 +28,59 @@ public:
     }
     void addTrainingDataSet(std::vector<DataPoint> data) {
         dataset = std::move(data);
+        if (dataset.empty()) return;
+
+        DataPoint min_dp;
+        min_dp.input.resize(dataset[0].input.size());
+        min_dp.output.resize(dataset[0].output.size());
+
+        DataPoint max_dp;
+        max_dp.input.resize(dataset[0].input.size());
+        max_dp.output.resize(dataset[0].output.size());
+
+        for (const auto& p : dataset) {
+            for(size_t i = 0; i < p.input.size(); ++i) {
+                min_dp.input[i] = std::min(min_dp.input[i], p.input[i]);
+                max_dp.input[i] = std::max(max_dp.input[i], p.input[i]);
+            }
+            for(size_t i = 0; i < p.output.size(); ++i) {
+                min_dp.output[i] = std::min(min_dp.output[i], p.output[i]);
+                max_dp.output[i] = std::max(max_dp.output[i], p.output[i]);
+            }
+        }
+
+        dataset_min = min_dp;
+        dataset_max = max_dp;
+
+
+        for (auto& p : dataset) {
+            normalizeDatapoint(p);
+        }
     }
+
+    void normalizeDatapoint(DataPoint& p) {
+        for (size_t i = 0; i < p.input.size(); ++i) {
+            p.input[i] -= dataset_min.input[i];
+            p.input[i] /= (dataset_max.input[i] - dataset_min.input[i]);
+        }
+        for (size_t i = 0; i < p.output.size(); ++i) {
+            p.output[i] -= dataset_min.output[i];
+            p.output[i] /= (dataset_max.output[i] - dataset_min.output[i]);
+        }
+    }
+
+    void denormalizeDatapoint(DataPoint& p) {
+        for (size_t i = 0; i < p.input.size(); ++i) {
+            p.input[i] *= (dataset_max.input[i] - dataset_min.input[i]);
+            p.input[i] += dataset_min.input[i];
+
+        }
+        for (size_t i = 0; i < p.output.size(); ++i) {
+            p.output[i] *= (dataset_max.output[i] - dataset_min.output[i]);
+            p.output[i] += dataset_min.output[i];
+        }
+    }
+
     void addMomentum(std::unique_ptr<NNMomentum> mom) {
         momentum = std::move(mom);
     }
@@ -64,7 +116,6 @@ public:
             gradients.push_back(grad);
         }
 
-
         auto addMatrices = [](const std::vector<NNEdgeMatrix>& v_in, std::vector<NNEdgeMatrix>& v_out) {
             for (size_t matrix_id = 0; matrix_id < v_in.size(); ++matrix_id) {
                 const auto& m_in = v_in[matrix_id];
@@ -78,6 +129,19 @@ public:
                 }
             }
         };
+        auto subMatrices = [](const std::vector<NNEdgeMatrix>& v_in, std::vector<NNEdgeMatrix>& v_out) {
+            for (size_t matrix_id = 0; matrix_id < v_in.size(); ++matrix_id) {
+                const auto& m_in = v_in[matrix_id];
+                auto& m_out = v_out[matrix_id];
+                for (size_t row_id = 0; row_id < m_in.size(); ++ row_id) {
+                    const auto& row_in = m_in[row_id];
+                    auto& row_out = m_out[row_id];
+                    for (size_t col_id = 0; col_id < row_in.size(); ++col_id) {
+                        row_out[col_id] -= row_in[col_id];
+                    }
+                }
+            }
+        };
 
         // Sum all gradients
         std::vector<NNEdgeMatrix> grad_mean = gradients[0];
@@ -87,16 +151,16 @@ public:
         }
 
         // reduce by size of batch (calulate mean)
-        for (auto& matrix : grad_mean)
-            for (auto& row : matrix)
-                for (auto& col : row)
-                   col /= M;
+        // for (auto& matrix : grad_mean)
+        //     for (auto& row : matrix)
+        //         for (auto& col : row)
+        //            col /= M;
 
         // apply momentum and learning factor
         momentum->applyMomentum(grad_mean);
 
         // apply changes to the network
-        addMatrices(grad_mean, network->connections);
+        subMatrices(grad_mean, network->connections);
         updateLast();
         updateLastChange(grad_mean);
     }
@@ -141,10 +205,11 @@ public:
                 static_cast<float>(
                     std::accumulate(error_history_epoch.begin(),
                                     error_history_epoch.end(),
-                                    0.0) / error_history_epoch.size());
+                                    0.0));
 
         stopped = terminator->shouldFinish(total_error);
 
+        std::lock_guard l{m};
         if (error_history_epoch.size() > 0)
             error_history.push_back(total_error);
         error_history_epoch.clear();
@@ -156,6 +221,8 @@ public: // whatev im out of time
     std::unique_ptr<NNLossFun> loss_fun;
     std::unique_ptr<NeuralNetwork> network;
     std::vector<DataPoint> dataset;
+    DataPoint dataset_min;
+    DataPoint dataset_max;
     std::vector<std::vector<DataPoint>> batches;
 
     size_t next_to_take = 0;
