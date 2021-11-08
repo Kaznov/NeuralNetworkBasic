@@ -21,7 +21,7 @@
 #ifndef NOMINMAX
     #define NOMINMAX
 #endif
-#include "dirent.h"
+#include "dirent/dirent.h"
 #include <windows.h>
 #else
 #include <dirent.h>
