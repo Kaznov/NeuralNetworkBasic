@@ -77,7 +77,7 @@ set(NNBASIC_SOURCES
 # https://stackoverflow.com/questions/13638408/override-compile-flags-for-single-files
 IF (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # Assume C++ sources
-  set_source_files_properties(${NNBASIC_SOURCES} PROPERTIES COMPILE_FLAGS "-Weverything -Wno-system-headers -Werror -Wno-padded -Wno-c++98-compat-pedantic -Wno-documentation -Wno-documentation-unknown-command -Wno-reserved-id-macro")
+    set_source_files_properties(${NNBASIC_SOURCES} PROPERTIES COMPILE_FLAGS "")
 ENDIF ()
 
 

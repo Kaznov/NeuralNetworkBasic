@@ -16,7 +16,7 @@
 #include "NNMomentum.h"
 #include "NNTerminator.h"
 
-extern bool debug;
+bool debug = false;
 
 // Contains all the training cases and verification cases.
 // Contains a scheduler, a momentum keeper and a terminator of NN.
@@ -53,12 +53,30 @@ public:
                 max_dp.output[i] = std::max(max_dp.output[i], p.output[i]);
             }
         }
+        for(size_t i = 0; i < min_dp.input.size(); ++i) {
+            if (min_dp.input[i] == max_dp.input[i]) {
+                max_dp.input[i] += 1;
+            }
+        }
+        for(size_t i = 0; i < min_dp.output.size(); ++i) {
+            if (min_dp.output[i] == max_dp.output[i]) {
+                max_dp.output[i] += 1;
+            }
+        }
 
         dataset_min = min_dp;
         dataset_max = max_dp;
 
 
         for (auto& p : dataset) {
+            normalizeDatapoint(p);
+        }
+    }
+
+    void addTestingDataset(std::vector<DataPoint> data) {
+        assert(dataset.size() > 0);
+        dataset_test = std::move(data);
+        for (auto& p : dataset_test) {
             normalizeDatapoint(p);
         }
     }
@@ -103,6 +121,10 @@ public:
         return !batches.empty();
     }
 
+    int lastVersion() {
+        return last_version;
+    }
+
     void learnBatch() {
         if (batches.empty()) throw "woopsie";
         if (finished()) return;
@@ -129,10 +151,10 @@ public:
                     auto && l = network->layers[i];
                     std::cerr << "Layer " << i << " pre act:\n";
                     for (float f : l->pre_values)
-                        std::cerr << std::setw(7) << std::setprecision(4) << f;
+                        std::cerr << std::setw(9) << std::fixed << std::setprecision(4) << f;
                     std::cerr << "\nLayer " << i << " post act:\n";
                     for (float f : l->values)
-                        std::cerr << std::setw(7) << std::setprecision(4) << f;
+                        std::cerr << std::setw(9) << std::setprecision(4) << f;
                         std::cerr << "\n\n";
                 }
 
@@ -213,6 +235,7 @@ public:
     void generateBatches() {
         checkFinish();
         ++epoch;
+        last_version++;
         if (finished()) return;
         batches.clear();
         std::shuffle(dataset.begin(), dataset.end(), RNG);
@@ -240,7 +263,6 @@ public:
     }
 
     void checkFinish() {
-
         float total_error;
         if (error_history_epoch.size() == 0)
             total_error = INFINITY;
@@ -254,9 +276,24 @@ public:
         stopped = terminator->shouldFinish(total_error);
 
         std::lock_guard l{m};
-        if (error_history_epoch.size() > 0)
+        if (error_history_epoch.size() > 0) {
             error_history.push_back(total_error);
-        error_history_epoch.clear();
+            if (dataset_test.empty()) error_history_test.push_back(NAN);
+            else {
+                float test_error = 0.0f;
+                for (const auto& dp : dataset_test) {
+                    network->evaluateNetwork(dp.input);
+                    auto nn_res = network->getLastLayerAfterEvaluation().values;
+                    auto err = loss_fun->calculateError(nn_res, dp.output);
+                    test_error +=err;
+                }
+                test_error /= dataset_test.size();
+                test_error *= dataset.size();
+                error_history_test.push_back(test_error);
+            }
+            error_history_epoch.clear();
+        }
+
     }
 
 public: // whatev im out of time
@@ -265,6 +302,7 @@ public: // whatev im out of time
     std::unique_ptr<NNLossFun> loss_fun;
     std::unique_ptr<NeuralNetwork> network;
     std::vector<DataPoint> dataset;
+    std::vector<DataPoint> dataset_test;
     DataPoint dataset_min;
     DataPoint dataset_max;
     std::vector<std::vector<DataPoint>> batches;
@@ -272,10 +310,12 @@ public: // whatev im out of time
     size_t next_to_take = 0;
     size_t batch_size = 0;
     bool stopped = false;
+    int last_version = 0;
     std::atomic_int epoch = 0;
 
     std::mutex m;
     std::vector<float> error_history;
+    std::vector<float> error_history_test;
     std::vector<float> error_history_epoch;
     std::shared_ptr<NeuralNetwork> last_readable;
     std::shared_ptr<NeuralNetwork> last_readable_changes;
@@ -292,5 +332,6 @@ public: // whatev im out of time
 
     size_t getCurrentEpoch() { return (size_t)epoch.load();}
     float getCurrentError() { std::lock_guard l {m}; return error_history.empty() ? NAN : error_history.back(); }
+    float getCurrentErrorTest() { std::lock_guard l {m}; return error_history_test.empty() ? NAN : error_history_test.back(); }
     std::vector<float> getErrorHistory() { std::lock_guard l {m}; return error_history; }
 };

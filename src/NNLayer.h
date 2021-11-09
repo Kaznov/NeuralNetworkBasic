@@ -158,6 +158,24 @@ class LinearLayer : public NNLayer {
     }
 };
 
+
+class LeakyRelu : public NNLayer {
+    public:
+    LeakyRelu(size_t size, bool has_bias = true) : NNLayer(size, has_bias) { }
+    void applyActivationFunction() override {
+        std::transform(pre_values.begin(), pre_values.end(), values.begin(), [](float f) {return std::max(f, 0.01f*f);});
+    }
+    const char* getName() override { return "Leaky Relu layer"; }
+
+    NNLayerValues calculateActivationToAccumulationGradient(const NNLayerValues& in) override {
+        NNLayerValues results(getSize());
+        for(size_t i = 0; i < getSize(); ++i) {
+            results[i] = in[i] * (pre_values[i] > 0 ? 1.0f : 0.01f);
+        }
+        return results;
+    }
+};
+
 class RampLayer : public NNLayer {
     public:
     RampLayer(size_t size, bool has_bias = true, float t1 = -1.0, float t2 = 1.0)

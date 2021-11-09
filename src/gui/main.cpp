@@ -13,14 +13,14 @@
 
 #include "NNTeacher.h"
 
-bool debug = true;
-
 std::unique_ptr<NNTeacher> teacher = std::make_unique<NNTeacher>();
 std::vector<std::string> set_labels;
 std::vector<DataPoint> training_set;
 std::vector<DataPoint> testing_set;
 std::future<void> global_waiter;
 
+int correctly_classified_training = 0;
+int correctly_classified_testing = 0;
 
 #include <filesystem>
 struct DatasetId {
@@ -128,6 +128,8 @@ std::atomic<bool> stop_requested = false;
 void initializeTeacher() {
     teacher = std::make_unique<NNTeacher>();
     teacher->addTrainingDataSet(training_set);
+    if (testing_set.size() > 0)
+    teacher->addTestingDataset(testing_set);
 }
 
 void showDataWindowText(std::string name, const std::vector<DataPoint>& data_set) {
@@ -297,48 +299,75 @@ void drawVisualClassificationTesting() {
 }
 
 void drawVisualClassificationTrainingNN() {
-    auto training_set_NN = training_set;
-    auto nn = teacher->GetLastReadable();
-    std::lock_guard l(teacher->m); // i cry
+    static std::vector<DataPoint> training_set_NN;
+    static int last_cached = -1;
 
-    for (auto& dp : training_set_NN) {
-        teacher->normalizeDatapoint(dp);
-        nn->evaluateNetwork(dp.input);
-        dp.output = nn->getLastLayerAfterEvaluation().values;
-        teacher->denormalizeDatapoint(dp);
+    if (teacher->lastVersion() != last_cached) {
+        training_set_NN = training_set;
+        auto nn = teacher->GetLastReadable();
+        std::lock_guard l(teacher->m); // i cry
+        last_cached = teacher->lastVersion();
+        correctly_classified_training = 0;
 
-        dp.output = teacher->loss_fun->normalize(dp.output);
-        auto max_it = std::max_element(dp.output.begin(), dp.output.end());
-        auto max_id = max_it - dp.output.begin();
-        auto output_size = dp.output.size();
-        dp.output.clear();
-        dp.output.resize(output_size);
-        dp.output[max_id] = 1.0;
+        for (auto& dp : training_set_NN) {
+            auto ans_it = std::max_element(dp.output.begin(), dp.output.end());
+            int ans_id = ans_it - dp.output.begin();
+
+            teacher->normalizeDatapoint(dp);
+            nn->evaluateNetwork(dp.input);
+            dp.output = nn->getLastLayerAfterEvaluation().values;
+            teacher->denormalizeDatapoint(dp);
+
+            dp.output = teacher->loss_fun->normalize(dp.output);
+            auto max_it = std::max_element(dp.output.begin(), dp.output.end());
+            auto max_id = max_it - dp.output.begin();
+            auto output_size = dp.output.size();
+            dp.output.clear();
+            dp.output.resize(output_size);
+            dp.output[max_id] = 1.0;
+
+            if (ans_id == max_id) ++correctly_classified_training;
+        }
     }
 
+
+    if (training_set_NN[0].input.size() == 2)
     drawVisualClassificationData("Training NN", training_set_NN);
 }
 
 void drawVisualClassificationTestingNN() {
-    auto testing_set_NN = testing_set;
-    auto nn = teacher->GetLastReadable();
-    std::lock_guard l(teacher->m); // i cry
+    static std::vector<DataPoint> testing_set_NN;
+    static int last_cached = -1;
 
-    for (auto& dp : testing_set_NN) {
-        teacher->normalizeDatapoint(dp);
-        nn->evaluateNetwork(dp.input);
-        dp.output = nn->getLastLayerAfterEvaluation().values;
-        teacher->denormalizeDatapoint(dp);
+    if (teacher->lastVersion() != last_cached) {
+        testing_set_NN = testing_set;
+        auto nn = teacher->GetLastReadable();
+        std::lock_guard l(teacher->m); // i cry
+        last_cached = teacher->lastVersion();
+        correctly_classified_testing = 0;
 
-        dp.output = teacher->loss_fun->normalize(dp.output);
-        auto max_it = std::max_element(dp.output.begin(), dp.output.end());
-        auto max_id = max_it - dp.output.begin();
-        auto output_size = dp.output.size();
-        dp.output.clear();
-        dp.output.resize(output_size);
-        dp.output[max_id] = 1.0;
+        for (auto& dp : testing_set_NN) {
+            auto ans_it = std::max_element(dp.output.begin(), dp.output.end());
+            int ans_id = ans_it - dp.output.begin();
+
+            teacher->normalizeDatapoint(dp);
+            nn->evaluateNetwork(dp.input);
+            dp.output = nn->getLastLayerAfterEvaluation().values;
+            teacher->denormalizeDatapoint(dp);
+
+
+            dp.output = teacher->loss_fun->normalize(dp.output);
+            auto max_it = std::max_element(dp.output.begin(), dp.output.end());
+            auto max_id = max_it - dp.output.begin();
+            auto output_size = dp.output.size();
+            dp.output.clear();
+            dp.output.resize(output_size);
+            dp.output[max_id] = 1.0;
+            if (ans_id == max_id) ++correctly_classified_testing;
+        }
     }
 
+    if (testing_set_NN[0].input.size() == 2)
     drawVisualClassificationData("Testing NN", testing_set_NN);
 }
 
@@ -494,7 +523,10 @@ void showNNErrorPlot() {
             xs.push_back(i);
         }
 
-        ImPlot::PlotLine("NN Error Plot", xs.data(), teacher->error_history.data(), xs.size());
+        ImPlot::PlotLine("NN Error Plot on train data", xs.data(), teacher->error_history.data(), xs.size());
+        if (teacher->error_history_test.size() == teacher->error_history.size())
+        ImPlot::PlotLine("NN Error Plot on test data", xs.data(), teacher->error_history_test.data(), xs.size());
+
         ImPlot::EndPlot();
     }
     ImGui::End();
@@ -515,6 +547,18 @@ void showIntroWindow() {
         show_intro_window = false;
         classification = true;
     }
+    ImGui::Separator();
+    static int style_idx = -1;
+    if (ImGui::Combo("Colors##Selector", &style_idx, "Dark\0Light\0Classic\0"))
+    {
+        switch (style_idx)
+        {
+        case 0: ImGui::StyleColorsDark(); break;
+        case 1: ImGui::StyleColorsLight(); break;
+        case 2: ImGui::StyleColorsClassic(); break;
+        }
+    }
+
 
     ImGui::End();
 }
@@ -530,15 +574,17 @@ std::vector<DataPoint> loadDataSet(std::string path) {
     if (classification) {
         // look through outputs, change to one-hot-encoding
         int max_class_id = -1;
+        int min_class_id = 1;
         for (const auto& p : csv.points) {
             max_class_id = std::max((int)p.output.back(), max_class_id);
+            min_class_id = std::min((int)p.output.back(), min_class_id);
         }
-        class_count = max_class_id; // no +1
+        class_count = max_class_id + 1 - min_class_id; // no +1
         for (auto& p : csv.points) {
             int id = (int)p.output.back();
             p.output.clear();
             p.output.resize(class_count);
-            p.output[id - 1] = 1.;
+            p.output[id - min_class_id] = 1.;
         }
 
         if (new_labels) {
@@ -564,6 +610,7 @@ void loadTrainingSet(std::string path) {
 void loadTestingSet(std::string path) {
     if (testing_set_loaded) return;
     testing_set = loadDataSet(path);
+    teacher->addTestingDataset(testing_set);
     testing_set_loaded = !training_set.empty();
 }
 
@@ -614,7 +661,7 @@ void showNetworkConfiguration() {
     ImGui::Checkbox("Has bias", &next_layer_bias);
 
 
-    std::string act_str[] = {"Sigmoid", "TanH", "Linear", "Ramp"};
+    std::string act_str[] = {"Sigmoid", "TanH", "Linear", "Ramp", "LeakyRelu"};
 
     static int next_layer_type = 0;
     const char* combo_preview_value = act_str[next_layer_type].c_str();
@@ -667,6 +714,15 @@ void showNetworkConfiguration() {
             lr->addLayer(std::make_unique<RampLayer>(
                 next_layer_size, next_layer_bias));
             lrc->addLayer(std::make_unique<RampLayer>(
+                next_layer_size, next_layer_bias));
+            break;
+
+        case 4:
+            nn->addLayer(std::make_unique<LeakyRelu>(
+                next_layer_size, next_layer_bias));
+            lr->addLayer(std::make_unique<LeakyRelu>(
+                next_layer_size, next_layer_bias));
+            lrc->addLayer(std::make_unique<LeakyRelu>(
                 next_layer_size, next_layer_bias));
             break;
 
@@ -864,15 +920,20 @@ void showMainWindow() {
 
     ImGui::Text("Loss type: %s", teacher->loss_fun ? teacher->loss_fun->getName() : "?");
     ImGui::Text("Batch size: %d", teacher->batch_size);
+    ImGui::Text("%s", teacher->momentum? teacher->momentum->toString().c_str() : "");
     ImGui::Checkbox("Show NN visualization", &show_nn_visual);
 
     ImGui::Separator();
 
     if (network_initialized) {
         float cur_err = teacher->getCurrentError();
-        ImGui::Text("Current error: %.5f", cur_err);
+        float cur_err_test = teacher->getCurrentErrorTest();
+        ImGui::Text("Current error on training set: %.5f", cur_err);
+        ImGui::Text("Current error on testing set: %.5f", cur_err_test);
         if (classification && testing_set.size() != 0) {
-            ImGui::Text("Correctly classified: %.3f%", 0.0);
+            ImGui::Text("Correctly classified on training set: %.4f%%", (float)correctly_classified_training / training_set.size() * 100.0f);
+            if (testing_set.size() > 0)
+            ImGui::Text("Correctly classified on testing set: %.4f%%", (float)correctly_classified_testing / testing_set.size() * 100.0f);
         }
         ImGui::Text("Current epoch: %d", teacher->getCurrentEpoch());
 
@@ -887,12 +948,10 @@ void showMainWindow() {
             if (ImGui::Button("10 epochs")) {
                 learning_on_side_thread = true;
                 global_waiter = std::async(std::launch::async, []() {
-                    debug = false;
                     for (int i = 0; i < 10; ++i) {
                         if (teacher->finished() || stop_requested.load()) break;
                         teacher->learnEpoch();
                     }
-                    debug = true;
                     stop_requested.store(false);
                     learning_on_side_thread = false;
                 });
@@ -900,12 +959,10 @@ void showMainWindow() {
             if (ImGui::Button("100 epochs")) {
                 learning_on_side_thread = true;
                 global_waiter = std::async(std::launch::async, [](){
-                    debug = false;
                     for (int i = 0; i < 100; ++i) {
                         if (teacher->finished() || stop_requested.load()) break;
                         teacher->learnEpoch();
                     }
-                    debug = true;
                     stop_requested.store(false);
                     learning_on_side_thread = false;
                 });
@@ -913,12 +970,10 @@ void showMainWindow() {
             if (ImGui::Button("Continue training")) {
                 learning_on_side_thread = true;
                 global_waiter = std::async(std::launch::async, [](){
-                    debug = false;
                     for (;;) {
                         if (teacher->finished() || stop_requested.load()) break;
                         teacher->learnEpoch();
                     }
-                    debug = true;
                     stop_requested.store(false);
                     learning_on_side_thread = false;
                 });
@@ -941,7 +996,6 @@ void showMainWindow() {
 
     ImGui::End();
 }
-
 
 int main(int, char**)
 {

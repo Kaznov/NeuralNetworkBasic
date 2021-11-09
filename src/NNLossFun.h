@@ -64,10 +64,10 @@ public:
 
         NNLayerValues res_v(yc.size());
         for (size_t i = 0; i < yc.size(); ++i) {
-            res_v[i] = -ye[i] * log(yc[i]) - (1 - ye[i]) * log(1 - yc[i]);
+            res_v[i] = -ye[i] * log(yc[i]);
         }
         float result = std::accumulate(res_v.begin(), res_v.end(), 0.0f);
-        if (isnan(result)) result = 0;
+        if (!std::isfinite(result)) result = 0;
         return result;
     }
     NNLayerValues calculateDerivative(NNLayerValues calculated, NNLayerValues expected) override {
