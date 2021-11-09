@@ -35,7 +35,8 @@ public:
     // and gradient of the previous layer
     virtual std::pair<NNEdgeMatrix, NNLayerValues> backwardPropagation(
         const NNLayerValues& gradient_of_activation, // gradient dCost/dA(Layer)
-        const NNLayerValues& previous_layer
+        const NNLayerValues& previous_layer,
+        const NNEdgeMatrix& edges
     ) {
         assert(gradient_of_activation.size() == getSize() + hasBias());
         NNLayerValues gradient_of_accumulation = // gradient of sum of edges dCost/dZ[layer] = dA[layer]/dZ[layer] * dCost / dA[layer]
@@ -51,7 +52,8 @@ public:
         for (size_t in_neuron_id = 0; in_neuron_id < previous_layer.size(); ++in_neuron_id) {
             float e_grad = previous_layer[in_neuron_id] * gradient_of_accumulation[out_neuron_id];
             edges_gradient[out_neuron_id][in_neuron_id] = e_grad;
-            gradient_of_prev_layer[in_neuron_id] += e_grad;
+            gradient_of_prev_layer[in_neuron_id] +=
+                gradient_of_accumulation[out_neuron_id] * edges[out_neuron_id][in_neuron_id];
         }
 
         return {edges_gradient, gradient_of_prev_layer};

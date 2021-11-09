@@ -13,6 +13,8 @@
 
 #include "NNTeacher.h"
 
+bool debug = true;
+
 std::unique_ptr<NNTeacher> teacher = std::make_unique<NNTeacher>();
 std::vector<std::string> set_labels;
 std::vector<DataPoint> training_set;
@@ -305,7 +307,7 @@ void drawVisualClassificationTrainingNN() {
         dp.output = nn->getLastLayerAfterEvaluation().values;
         teacher->denormalizeDatapoint(dp);
 
-        dp.output = LogLoss::applyTransform(dp.output, {});
+        dp.output = teacher->loss_fun->normalize(dp.output);
         auto max_it = std::max_element(dp.output.begin(), dp.output.end());
         auto max_id = max_it - dp.output.begin();
         auto output_size = dp.output.size();
@@ -328,7 +330,7 @@ void drawVisualClassificationTestingNN() {
         dp.output = nn->getLastLayerAfterEvaluation().values;
         teacher->denormalizeDatapoint(dp);
 
-        dp.output = LogLoss::applyTransform(dp.output, {});
+        dp.output = teacher->loss_fun->normalize(dp.output);
         auto max_it = std::max_element(dp.output.begin(), dp.output.end());
         auto max_id = max_it - dp.output.begin();
         auto output_size = dp.output.size();
@@ -885,10 +887,12 @@ void showMainWindow() {
             if (ImGui::Button("10 epochs")) {
                 learning_on_side_thread = true;
                 global_waiter = std::async(std::launch::async, []() {
+                    debug = false;
                     for (int i = 0; i < 10; ++i) {
                         if (teacher->finished() || stop_requested.load()) break;
                         teacher->learnEpoch();
                     }
+                    debug = true;
                     stop_requested.store(false);
                     learning_on_side_thread = false;
                 });
@@ -896,10 +900,12 @@ void showMainWindow() {
             if (ImGui::Button("100 epochs")) {
                 learning_on_side_thread = true;
                 global_waiter = std::async(std::launch::async, [](){
+                    debug = false;
                     for (int i = 0; i < 100; ++i) {
                         if (teacher->finished() || stop_requested.load()) break;
                         teacher->learnEpoch();
                     }
+                    debug = true;
                     stop_requested.store(false);
                     learning_on_side_thread = false;
                 });
@@ -907,10 +913,12 @@ void showMainWindow() {
             if (ImGui::Button("Continue training")) {
                 learning_on_side_thread = true;
                 global_waiter = std::async(std::launch::async, [](){
+                    debug = false;
                     for (;;) {
                         if (teacher->finished() || stop_requested.load()) break;
                         teacher->learnEpoch();
                     }
+                    debug = true;
                     stop_requested.store(false);
                     learning_on_side_thread = false;
                 });

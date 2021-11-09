@@ -6,12 +6,17 @@
 #include <mutex>
 #include <atomic>
 
+#include <iostream>
+#include <iomanip>
+
 #include "utils.h"
 #include "DataPoint.h"
 #include "NeuralNetwork.h"
 #include "NNLossFun.h"
 #include "NNMomentum.h"
 #include "NNTerminator.h"
+
+extern bool debug;
 
 // Contains all the training cases and verification cases.
 // Contains a scheduler, a momentum keeper and a terminator of NN.
@@ -108,9 +113,61 @@ public:
 
         // backprop for all in batch
         for (auto&& dp : batch) {
+            if (debug) {
+
+                std::cerr << "DP in : ";
+                for (float f : dp.input) std::cerr << f << " ";
+                std::cerr << std::endl;
+            }
+
             network->evaluateNetwork(dp.input);
-            auto err_der = loss_fun->calculateDerivative(network->getLastLayerAfterEvaluation().values, dp.output);
-            auto err = loss_fun->calculateError(network->getLastLayerAfterEvaluation().values, dp.output);
+
+            if (debug) {
+
+                std::cerr << "Network nodes:\n";
+                for (int i = 0; i < network->layers.size(); ++i) {
+                    auto && l = network->layers[i];
+                    std::cerr << "Layer " << i << " pre act:\n";
+                    for (float f : l->pre_values)
+                        std::cerr << std::setw(7) << std::setprecision(4) << f;
+                    std::cerr << "\nLayer " << i << " post act:\n";
+                    for (float f : l->values)
+                        std::cerr << std::setw(7) << std::setprecision(4) << f;
+                        std::cerr << "\n\n";
+                }
+
+
+                std::cerr << "DP out : ";
+                for (float f : dp.output) std::cerr << f << " ";
+                std::cerr << "\n";
+            }
+
+
+            auto network_ans= network->getLastLayerAfterEvaluation().values;
+
+            if (debug) {
+                std::cerr << "NN out : ";
+                for (float f : network_ans) std::cerr << f << " ";
+                std::cerr << "\n";
+            }
+
+            auto network_ans_cal = loss_fun->normalize(network_ans);
+
+            if (debug) {
+                std::cerr << "NN out norm: ";
+                for (float f : network_ans_cal) std::cerr << f << " ";
+                std::cerr << "\n";
+            }
+
+            auto err_der = loss_fun->calculateDerivative(network_ans, dp.output);
+
+            if (debug) {
+                std::cerr << "Err der : ";
+                for (float f : err_der) std::cerr << f << " ";
+                std::cerr << "\n";
+            }
+
+            auto err = loss_fun->calculateError(network_ans, dp.output);
             error_history_epoch.push_back(err);
             auto grad = network->gradientDescent(err_der);
             gradients.push_back(grad);
@@ -125,19 +182,6 @@ public:
                     auto& row_out = m_out[row_id];
                     for (size_t col_id = 0; col_id < row_in.size(); ++col_id) {
                         row_out[col_id] += row_in[col_id];
-                    }
-                }
-            }
-        };
-        auto subMatrices = [](const std::vector<NNEdgeMatrix>& v_in, std::vector<NNEdgeMatrix>& v_out) {
-            for (size_t matrix_id = 0; matrix_id < v_in.size(); ++matrix_id) {
-                const auto& m_in = v_in[matrix_id];
-                auto& m_out = v_out[matrix_id];
-                for (size_t row_id = 0; row_id < m_in.size(); ++ row_id) {
-                    const auto& row_in = m_in[row_id];
-                    auto& row_out = m_out[row_id];
-                    for (size_t col_id = 0; col_id < row_in.size(); ++col_id) {
-                        row_out[col_id] -= row_in[col_id];
                     }
                 }
             }
@@ -160,7 +204,7 @@ public:
         momentum->applyMomentum(grad_mean);
 
         // apply changes to the network
-        subMatrices(grad_mean, network->connections);
+        addMatrices(grad_mean, network->connections);
         updateLast();
         updateLastChange(grad_mean);
     }
