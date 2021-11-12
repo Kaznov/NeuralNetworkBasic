@@ -192,7 +192,7 @@ public:
             auto err = loss_fun->calculateError(network_ans, dp.output);
             error_history_epoch.push_back(err);
             auto grad = network->gradientDescent(err_der);
-            gradients.push_back(grad);
+            gradients.push_back(std::move(grad));
         }
 
         auto addMatrices = [](const std::vector<NNEdgeMatrix>& v_in, std::vector<NNEdgeMatrix>& v_out) {

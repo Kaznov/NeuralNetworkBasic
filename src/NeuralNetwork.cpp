@@ -25,7 +25,7 @@ std::vector<NNEdgeMatrix> NeuralNetwork::gradientDescent(const NNLayerValues& la
     auto last_gradient = last_layer_gradient;
     for (size_t l = this->layers.size() - 1; l > 0; l--) {
         auto r = layers[l]->backwardPropagation(last_gradient, layers[l - 1]->values, connections[l - 1]);
-        last_gradient = r.second;
+        last_gradient = std::move(r.second);
         edges_gradients.insert(edges_gradients.begin(), std::move(r.first));
     }
     return edges_gradients;

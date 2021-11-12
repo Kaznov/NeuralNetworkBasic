@@ -48,15 +48,16 @@ public:
 
         NNLayerValues gradient_of_prev_layer(previous_layer.size());
 
-        for (size_t out_neuron_id = 0; out_neuron_id < getSize(); ++out_neuron_id)
-        for (size_t in_neuron_id = 0; in_neuron_id < previous_layer.size(); ++in_neuron_id) {
-            float e_grad = previous_layer[in_neuron_id] * gradient_of_accumulation[out_neuron_id];
-            edges_gradient[out_neuron_id][in_neuron_id] = e_grad;
-            gradient_of_prev_layer[in_neuron_id] +=
-                gradient_of_accumulation[out_neuron_id] * edges[out_neuron_id][in_neuron_id];
+        for (size_t out_neuron_id = 0; out_neuron_id < getSize(); ++out_neuron_id) {
+            float acc_grad_out_neuron = gradient_of_accumulation[out_neuron_id];
+            for (size_t in_neuron_id = 0; in_neuron_id < previous_layer.size(); ++in_neuron_id) {
+                edges_gradient[out_neuron_id][in_neuron_id] = previous_layer[in_neuron_id] * acc_grad_out_neuron;
+                gradient_of_prev_layer[in_neuron_id] +=
+                    edges[out_neuron_id][in_neuron_id] * acc_grad_out_neuron;
+            }
         }
 
-        return {edges_gradient, gradient_of_prev_layer};
+        return {std::move(edges_gradient), std::move(gradient_of_prev_layer)};
     };
 
     size_t getSize() const { return size; }
